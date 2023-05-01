@@ -3,7 +3,8 @@
 // use AES-256-CBC w/ PKCS#7 padding because it's the most common for things
 // like medical data where this would be applied
 //
-
+#include <cmath>
+#include <stdexcept>
 #include <openssl/evp.h>
 #include <openssl/rand.h>
 
@@ -16,20 +17,35 @@ struct KeyInformation {
 };
 
 uint8_t *uint64_to_bytes(uint64_t in, int &len) {
-
+    uint8_t *bytes = (uint8_t *)malloc(8);
+    for (int i = 0; i < 8; i++) {
+        bytes[i] = in >> (8 * i);
+    }
+    len = 8;
+    return bytes;
 }
 
 uint64_t bytes_to_uint64(uint8_t *bytes, int len) {
+    if (len > 8) {
+        throw std::invalid_argument("cannot convert > 8 bytes to uint64_t");
+    }
 
+    uint64_t result = 0;
+    for (int i = 0; i < len; i++) {
+        uint64_t segment = bytes[i];
+        segment = segment << (8 * i);
+        result = result + segment;
+    }
+
+    free(bytes);
+    return result;
 }
 
 KeyInformation generate_keyinfo() {
     KeyInformation ki;
 
-    // generate the key
+    // initialize key and IV with cryptographically secure random bytes
     RAND_bytes(ki.key, sizeof(ki.key));
-
-    // generate the IV
     RAND_bytes(ki.iv, sizeof(ki.iv));
 
     return ki;
@@ -40,32 +56,47 @@ uint8_t *standard_encrypt(uint64_t plaintext, int &cbytes, KeyInformation key_in
     EVP_CIPHER_CTX *ctx;
     EVP_EncryptInit(ctx, EVP_aes_256_cbc(), key_info.key, key_info.iv);
 
-    // execute encryption
+    // transform plaintext
     int plaintext_len;
-    uint8_t *out = (uint8_t *)malloc(2 * AES_BLOCK_SIZE);
     uint8_t *plaintext_bytes = uint64_to_bytes(plaintext, plaintext_len);
-    int encrypted_bytes;
-    EVP_EncryptUpdate(ctx, out, &encrypted_bytes, plaintext_bytes, plaintext_len);
-    cbytes = encrypted_bytes;
-    EVP_EncryptFinal(ctx, out + encrypted_bytes, &encrypted_bytes);
-    cbytes += encrypted_bytes;
+
+    // execute encryption
+    int ciphertext_len;
+    uint8_t *ciphertext_bytes = (uint8_t *)malloc(2 * AES_BLOCK_SIZE);
+
+    EVP_EncryptUpdate(ctx, ciphertext_bytes, &ciphertext_len, plaintext_bytes, plaintext_len);
+    cbytes = ciphertext_len;
+    EVP_EncryptFinal(ctx, ciphertext_bytes + ciphertext_len, &ciphertext_len);
+    cbytes += ciphertext_len;
+
     free(plaintext_bytes);
 
     // return
     EVP_CIPHER_CTX_cleanup(ctx);
-    return out;
+    return ciphertext_bytes;
 }
 
-uint64_t standard_decrypt(uint8_t *ciphertext, int cbytes, KeyInformation key_info) {
+uint64_t standard_decrypt(uint8_t *ciphertext_bytes, int cbytes, KeyInformation key_info) {
     // set up cipher
     EVP_CIPHER_CTX *ctx;
-    EVP_EncryptInit(ctx, EVP_aes_256_cbc(), key_info.key, key_info.iv);
+    EVP_DecryptInit(ctx, EVP_aes_256_cbc(), key_info.key, key_info.iv);
 
-    // TODO decrypt ciphertext that is cbytes long
+    // decrypt ciphertext that is cbytes long
+    int pbytes;
+    int plaintext_len;
+    uint8_t *plaintext_bytes = (uint8_t *)malloc(2 * AES_BLOCK_SIZE);
+
+    EVP_DecryptUpdate(ctx, plaintext_bytes, &plaintext_len, ciphertext_bytes, cbytes);
+    pbytes = plaintext_len;
+    EVP_DecryptFinal(ctx, plaintext_bytes + plaintext_len, &plaintext_len);
+    pbytes += plaintext_len;
+
+    free(ciphertext_bytes);
 
     // return
     EVP_CIPHER_CTX_cleanup(ctx);
-    return 0;
+    int result = bytes_to_uint64(plaintext_bytes, pbytes);
+    return result;
 }
 
 // compute x^2 + 1
