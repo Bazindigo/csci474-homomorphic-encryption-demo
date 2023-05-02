@@ -1,5 +1,6 @@
 #include <cstdint>
 #include <string>
+#include <chrono>
 
 #include "seal/seal.h"
 
@@ -88,7 +89,9 @@ int homomorphic_decrypt(SecretKey secret_key, Ciphertext ciphertext) {
 int homomorphic_benchmark(uint64_t plaintext) {
     KeyPair key_pair = generate_keypair();
     Ciphertext ciphertext = homomorphic_encrypt(plaintext, key_pair.public_key);
+    auto start = std::chrono::high_resolution_clock::now();
     ciphertext = homomorphic_operator(ciphertext);
+    auto end = std::chrono::high_resolution_clock::now();
     int result = homomorphic_decrypt(key_pair.secret_key, ciphertext);
-    return 0;
+    return std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count();
 }

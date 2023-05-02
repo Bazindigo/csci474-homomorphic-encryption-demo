@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.20)
 project(SEAL_comparison)
 
-# declare a target called test
+# declare targets
 add_executable(comparison comparison.cpp)
 
 # require microsoft seal for target test

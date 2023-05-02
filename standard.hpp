@@ -4,9 +4,13 @@
 // like medical data where this would be applied
 //
 #include <cmath>
+#include <chrono>
 #include <stdexcept>
 #include <openssl/evp.h>
 #include <openssl/rand.h>
+
+#include <iostream>
+using std::cout, std::endl;
 
 #define AES_256_KEY_SIZE 32
 #define AES_BLOCK_SIZE 16
@@ -53,7 +57,7 @@ KeyInformation generate_keyinfo() {
 
 uint8_t *standard_encrypt(uint64_t plaintext, int &cbytes, KeyInformation key_info) {
     // set up cipher
-    EVP_CIPHER_CTX *ctx;
+    EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
     EVP_EncryptInit(ctx, EVP_aes_256_cbc(), key_info.key, key_info.iv);
 
     // transform plaintext
@@ -78,7 +82,7 @@ uint8_t *standard_encrypt(uint64_t plaintext, int &cbytes, KeyInformation key_in
 
 uint64_t standard_decrypt(uint8_t *ciphertext_bytes, int cbytes, KeyInformation key_info) {
     // set up cipher
-    EVP_CIPHER_CTX *ctx;
+    EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
     EVP_DecryptInit(ctx, EVP_aes_256_cbc(), key_info.key, key_info.iv);
 
     // decrypt ciphertext that is cbytes long
@@ -103,7 +107,6 @@ uint64_t standard_decrypt(uint8_t *ciphertext_bytes, int cbytes, KeyInformation 
 uint8_t *standard_operator(uint8_t *ciphertext, int &cbytes, KeyInformation key_info) {
     // decrypt
     uint64_t plain = standard_decrypt(ciphertext, cbytes, key_info);
-    free(ciphertext);
 
     // perform operations
     plain = pow(plain, 2) + 1;
@@ -114,10 +117,15 @@ uint8_t *standard_operator(uint8_t *ciphertext, int &cbytes, KeyInformation key_
 
 int standard_benchmark(uint64_t plaintext) {
     KeyInformation key_info = generate_keyinfo();
+
     int cbytes;
     uint8_t *ciphertext = standard_encrypt(plaintext, cbytes, key_info);
+
+    auto start = std::chrono::high_resolution_clock::now();
     ciphertext = standard_operator(ciphertext, cbytes, key_info);
+    auto end = std::chrono::high_resolution_clock::now();
+
     uint64_t result = standard_decrypt(ciphertext, cbytes, key_info);
-    free(ciphertext);
-    return 0;
+
+    return std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count();
 }
